@@ -28,7 +28,13 @@ do
         local spice
 
             while not spice do
-                EnumDestructablesInRect(rect, nil, function() if GetDestructableTypeId(GetEnumDestructable()) == FourCC("B000") then spice = GetEnumDestructable() end end)
+
+                EnumDestructablesInRect(rect, nil, function()
+                    if GetDestructableTypeId(GetEnumDestructable()) == FourCC("B000") then
+                        spice = GetEnumDestructable()
+                    end
+                end)
+
                 range = range + 100.
                 SetRect(rect, x - range, y - range, x + range, y + range)
                 if range > 5000. then return end
@@ -40,10 +46,35 @@ do
     end
 
 
+    function GetNearestRefinery(harvester)
+        local unit_data = GetUnitData(harvester)
 
+            if unit_data.last_refinery and GetWidgetLife(unit_data.last_refinery) > 0.045 then
+                return unit_data.last_refinery
+            else
+                local refinery
+                local mygroup = CreateGroup()
+                local x, y = GetUnitX(harvester), GetUnitY(harvester)
+                local radius = 500.
 
+                    while not refinery do
+                        GroupEnumUnitsInRange(mygroup, x, y, radius, MyRefineryFilter)
 
+                        local myplayer = GetOwningPlayer(harvester)
+                        ForGroup(mygroup, function()
+                            if GetOwningPlayer(GetEnumUnit()) == myplayer then
+                                refinery = GetEnumUnit()
+                            end
+                        end)
+                        radius = radius + 200.
+                    end
 
+                unit_data.last_refinery = refinery
+                return refinery
+            end
+
+        return nil
+    end
 
 
     function UpdateSpiceText(target)
@@ -63,56 +94,111 @@ do
             SetTextTagVisibility(text, GetLocalPlayer() == GetOwningPlayer(target))
             unit_data.spice_text = text
             unit_data.spice_value = 0.
+            unit_data.spice_text_timer = CreateTimer()
+            TimerStart(unit_data.spice_text_timer, 0.035, true, function()
+                SetTextTagPosUnit(text, target, 5.)
+            end)
     end
 
 
     function HarvestInit()
-        local Trigger = CreateTrigger()
-        TriggerRegisterAnyUnitEventBJ(Trigger, EVENT_PLAYER_UNIT_SPELL_EFFECT)
-        TriggerAddAction(Trigger, function()
 
-            if GetSpellAbilityId() == FourCC("A01J") then
-                local unit_data = GetUnitData(GetTriggerUnit())
-                local spice = GetSpellTargetDestructable()
-                local new_life = GetWidgetLife(spice) - 100.
-
-                SetDestructableLife(spice, new_life)
-                unit_data.spice_value = unit_data.spice_value + 100.
-                UpdateSpiceText(unit_data.owner)
-                print("casted")
-
-                if not (new_life > 0.) then
-                    spice = GetNearestSpice(unit_data.owner)
-                    if spice then IssueTargetDestructableOrder(unit_data.owner, order_hex, spice) end
-                    print("new spice seek")
-                elseif unit_data.spice_value > 700. then
-                    unit_data.spice_value = 700.
-                    IssueImmediateOrderById(unit_data.owner, order_stop)
-                    print("full")
-                else
-                    IssueTargetDestructableOrder(unit_data.owner, order_hex, spice)
-                    print("reorder")
-                end
-
-            end
-
+        MyRefineryFilter = Filter(function()
+            return GetUnitTypeId(GetFilterUnit()) == FourCC("h000") and GetWidgetLife(GetFilterUnit()) > 0.045
         end)
 
 
-        Trigger = CreateTrigger()
-        TriggerRegisterAnyUnitEventBJ(Trigger, EVENT_PLAYER_UNIT_SPELL_EFFECT)
+
+        local Trigger = CreateTrigger()
+        TriggerRegisterAnyUnitEventBJ(Trigger, EVENT_PLAYER_UNIT_SPELL_FINISH)
         TriggerAddAction(Trigger, function()
 
-            if GetSpellAbilityId() == FourCC("A01I") then
+            local spell = GetSpellAbilityId()
+            
+            if spell == FourCC("A01J") then
+                local unit_data = GetUnitData(GetTriggerUnit())
+                local spice = unit_data.last_spice
+                local new_life = GetWidgetLife(spice) - 100.
+
+                    SetDestructableLife(spice, new_life)
+                    unit_data.spice_value = unit_data.spice_value + 100.
+                    UpdateSpiceText(unit_data.owner)
+                    print("harvested")
+
+
+                        if unit_data.spice_value >= 700. then
+                            unit_data.spice_value = 700.
+                            local refinery = GetNearestRefinery(unit_data.owner)
+
+                                if refinery then
+                                    IssueTargetOrderById(unit_data.owner, order_returnresources, refinery)
+                                end
+
+                            print("full")
+                        elseif not (new_life > 0.) then
+                            spice = GetNearestSpice(unit_data.owner)
+
+                                if spice then
+                                    TimerStart(CreateTimer(), 0., false, function()
+                                        IssueTargetOrderById(unit_data.owner, order_hex, spice)
+                                        DestroyTimer(GetExpiredTimer())
+                                    end)
+                                end
+
+                            unit_data.last_spice = spice
+                            print("new spice seek")
+                        else
+                            TimerStart(CreateTimer(), 0., false, function()
+                                IssueTargetOrderById(unit_data.owner, order_hex, spice)
+                                DestroyTimer(GetExpiredTimer())
+                            end)
+                            --(unit_data.owner, order_hex, spice)
+                            print("reorder")
+                        end
+
+            elseif spell == FourCC("A01I") then
                 local unit_data = GetUnitData(GetTriggerUnit())
                 local spice = GetNearestSpice(unit_data.owner)
 
-                if spice then IssueTargetDestructableOrder(unit_data.owner, order_hex, spice) end
-                print("get target spice")
+                    if spice then
+                        IssueTargetOrderById(unit_data.owner, order_hex, spice)
+                        unit_data.last_spice = spice
+                    end
+
+                    if spice then print("get target spice") end
+
+            elseif spell == FourCC("A01L") then
+                local unit_data = GetUnitData(GetTriggerUnit())
+                local refinery = GetNearestRefinery(unit_data.owner)
+    
+                    if refinery then
+                        IssueTargetOrderById(unit_data.owner, order_returnresources, refinery)
+                    end
+
+            elseif spell == FourCC("A01K") then
+                local unit_data = GetUnitData(GetTriggerUnit())
+
+                    unit_data.spice_value = 0.
+                    UpdateSpiceText(unit_data.owner)
+
+                    TimerStart(CreateTimer(), 0., false, function()
+                        if GetWidgetLife(unit_data.last_spice) > 0. then
+                            IssuePointOrderById(unit_data.owner, order_harvest, GetWidgetX(unit_data.last_spice), GetWidgetY(unit_data.last_spice))
+                        else
+                            local spice = GetNearestSpice(unit_data.owner)
+                                if spice then
+                                    IssuePointOrderById(unit_data.owner, order_harvest, GetWidgetX(unit_data.spice), GetWidgetY(unit_data.spice))
+                                end
+                        end
+                        DestroyTimer(GetExpiredTimer())
+                    end)
+
 
             end
-            print("AAAAAAAA")
+
         end)
+
+
     end
 
 

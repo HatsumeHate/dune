@@ -170,6 +170,12 @@ do
                     TimerStart(CreateTimer(), unit_data.time_before_remove, false, function ()
                         DestroyTimer(unit_data.action_timer)
                         DestroyTimer(unit_data.attack_timer)
+
+                        if unit_data.spice_text_timer then
+                            DestroyTimer(unit_data.spice_text_timer)
+                            DestroyTextTag(unit_data.spice_text)
+                        end
+
                         UnitsList[handle] = nil
                         DestroyTimer(GetExpiredTimer())
                     end)

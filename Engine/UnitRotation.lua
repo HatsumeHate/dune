@@ -9,6 +9,27 @@ do
 
 
 
+    function ReapplyOrder(data)
+        if data.heading_target then
+            if GetWidgetLife(data.heading_target) > 0.045 and IsUnitVisible(data.heading_target, GetOwningPlayer(data.owner)) then
+                IssueTargetOrderById(data.owner, data.issued_order, data.heading_target)
+            end
+        elseif data.heading_widget then
+            if GetWidgetLife(data.heading_widget) > 0.045 then
+                IssueTargetOrderById(data.owner, data.issued_order, data.heading_widget)
+            end
+        else
+            IssuePointOrderById(data.owner, data.issued_order, data.heading_x, data.heading_y)
+        end
+    end
+
+    function StopRotation(data)
+        data.total_rotation_angle = 0.
+        DestroyTimer(data.rotation_timer)
+        data.rotation_timer = nil
+        SetUnitMoveSpeed(data.owner, data.current_movement_speed)
+    end
+
 
     function UnitRotationInit()
         local Trigger = CreateTrigger()
@@ -20,18 +41,29 @@ do
             local order = GetIssuedOrderId()
 
 
-                if order == order_move or order == order_attack or order == order_smart or order_harvest or order_returnresources or order_hex then
+                if order == order_move or order == order_attack or order == order_smart or order == order_harvest or order == order_returnresources or order == order_hex then
                     local source = GetTriggerUnit()
                     local data = GetUnitData(source)
 
+                    print("issued!")
                     if GetOrderTargetUnit() then
                         data.heading_x = GetUnitX(GetOrderTargetUnit())
                         data.heading_y = GetUnitY(GetOrderTargetUnit())
                         data.heading_target = GetOrderTargetUnit()
+                        data.heading_widget = nil
+                        print("target!")
+                    elseif GetOrderTargetDestructable() then
+                        data.heading_x = GetWidgetX(GetOrderTargetDestructable())
+                        data.heading_y = GetWidgetY(GetOrderTargetDestructable())
+                        data.heading_widget = GetOrderTargetDestructable()
+                        data.heading_target = nil
+                        print("widget!")
                     else
                         data.heading_x = GetOrderPointX()
                         data.heading_y = GetOrderPointY()
                         data.heading_target = nil
+                        data.heading_widget = nil
+                        print("point!")
                     end
 
 
@@ -75,7 +107,7 @@ do
 
                             TimerStart(data.rotation_timer, 0.025, true, function()
 
-                                if GetUnitState(source, UNIT_STATE_LIFE) > 0.045 then
+                                if GetWidgetLife(source) > 0.045 then
                                     if data.total_rotation_angle > 0. then
                                         data.total_rotation_angle = data.total_rotation_angle - data.turnrate
 
@@ -91,25 +123,16 @@ do
                                         SetUnitFacingTimed(source, facing, 0.)
 
                                     elseif data.heading_target and ((GetWidgetLife(data.heading_target) > 0.045 and IsAngleInFace(source, data.move_angle, GetUnitX(data.heading_target), GetUnitY(data.heading_target))) or GetWidgetLife(data.heading_target) <= 0.045) then
-                                        data.total_rotation_angle = 0.
+                                        ReapplyOrder(data)
+                                        StopRotation(data)
+                                        print("done")
                                     else
-                                        if data.heading_target then
-                                            if GetWidgetLife(data.heading_target) > 0.045 and IsUnitVisible(data.heading_target, GetOwningPlayer(source)) then
-                                                IssueTargetOrderById(source, data.issued_order, data.heading_target)
-                                            end
-                                        else
-                                            IssuePointOrderById(source, data.issued_order, data.heading_x, data.heading_y)
-                                            if data.issued_order == order_hex then print("????") end
-                                        end
-
-                                        DestroyTimer(data.rotation_timer)
-                                        data.rotation_timer = nil
-                                        SetUnitMoveSpeed(source, data.current_movement_speed)
+                                        ReapplyOrder(data)
+                                        StopRotation(data)
                                         print("done")
                                     end
                                 else
-                                    DestroyTimer(data.rotation_timer)
-                                    data.rotation_timer = nil
+                                    StopRotation(data)
                                     print("dead")
                                 end
                             end)
