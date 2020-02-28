@@ -19,7 +19,31 @@ do
 
 
 
+    local HARVEST_ABILITY = FourCC("A01J")
+    local HARVEST_ABILITY_POINTER = FourCC("A01I")
+    local RETURN_ABILITY = FourCC("A01K")
+    local RETURN_ABILITY_VISUAL = FourCC("A01L")
+    local SPICE_ID = FourCC("B000")
+    local HARVESTER_ID = FourCC("e001")
+    local REFINERY_ID = FourCC("h000")
 
+
+
+    ---@param unit unit
+    ---@param player player
+    function IsHarvester(unit, player)
+        return GetUnitTypeId(unit) == HARVESTER_ID and GetWidgetLife(unit) > 0.045 and GetOwningPlayer(unit) == player
+    end
+
+    ---@param unit unit
+    ---@param player player
+    function IsRefinery(unit, player)
+        return GetUnitTypeId(unit) == REFINERY_ID and GetWidgetLife(unit) > 0.045 and GetOwningPlayer(unit) == player
+    end
+
+
+
+    ---@param unit unit
     function GetNearestSpice(unit)
         local range = 50.
         local x = GetUnitX(unit)
@@ -30,7 +54,7 @@ do
             while not spice do
 
                 EnumDestructablesInRect(rect, nil, function()
-                    if GetDestructableTypeId(GetEnumDestructable()) == FourCC("B000") then
+                    if GetDestructableTypeId(GetEnumDestructable()) == SPICE_ID then
                         spice = GetEnumDestructable()
                     end
                 end)
@@ -46,6 +70,7 @@ do
     end
 
 
+    ---@param harvester unit
     function GetNearestRefinery(harvester)
         local unit_data = GetUnitData(harvester)
 
@@ -66,6 +91,7 @@ do
                                 refinery = GetEnumUnit()
                             end
                         end)
+
                         radius = radius + 200.
                     end
 
@@ -77,6 +103,7 @@ do
     end
 
 
+    ---@param target unit
     function UpdateSpiceText(target)
         local unit_data = GetUnitData(target)
         local spice_value = math.floor(unit_data.spice_value / 100.)
@@ -85,7 +112,9 @@ do
     end
 
 
-    function CreateSpiceTexttag(target)
+    ---@param target unit
+    ---@param static boolean
+    function CreateSpiceTexttag(target, static)
         local unit_data = GetUnitData(target)
         local text = CreateTextTag()
 
@@ -94,107 +123,193 @@ do
             SetTextTagVisibility(text, GetLocalPlayer() == GetOwningPlayer(target))
             unit_data.spice_text = text
             unit_data.spice_value = 0.
-            unit_data.spice_text_timer = CreateTimer()
-            TimerStart(unit_data.spice_text_timer, 0.035, true, function()
-                SetTextTagPosUnit(text, target, 5.)
+
+                if not static then
+                    unit_data.spice_text_timer = CreateTimer()
+                    TimerStart(unit_data.spice_text_timer, 0.035, true, function()
+                        SetTextTagPosUnit(text, target, 5.)
+                    end)
+                end
+    end
+
+
+
+
+    ---@param unit unit
+    function CreateRefineryProximity(unit)
+        local unit_data = GetUnitData(unit)
+        local harvester
+
+
+
+
+
+            unit_data.proximity_rect = Rect(GetUnitX(unit) - 300., GetUnitY(unit) - 300., GetUnitX(unit) + 300., GetUnitY(unit) + 300.)
+            unit_data.proximity_region = CreateRegion()
+            unit_data.proximity_trigger = CreateTrigger()
+            RegionAddRect(unit_data.proximity_region, unit_data.proximity_rect)
+            TriggerRegisterEnterRegionSimple(unit_data.proximity_trigger, unit_data.proximity_region)
+            TriggerAddAction(unit_data.proximity_trigger, function ()
+                local entered = GetEnteringUnit()
+
+                    if IsHarvester(entered, GetOwningPlayer(entered)) then
+                        local harvester_data = GetUnitData(entered)
+
+                            if (harvester_data.spice_value or 0.) > 0. then
+                                IssuePointOrderById(entered, order_move, GetUnitX(unit) , GetUnitY(unit) - 200.)
+                                harvester = entered
+                                unit_data.unload_timer = CreateTimer()
+                                TimerStart(unit_data.unload_timer, 0.05, true, function()
+
+                                    if IsUnitInRange(entered, unit, 180.) and IsPointInAngleWindow(270., 7.5, GetUnitX(unit), GetUnitY(unit), GetUnitX(entered), GetUnitY(entered)) then --(GetUnitX(entered) < r_x_max and GetUnitX(entered) > r_x_min) and GetUnitY(entered) < r_y_max and GetUnitY(entered) > r_y_min then
+                                        IssueImmediateOrderById(harvester, order_stop)
+                                        --DestroyTimer(unit_data.unload_timer)
+
+                                        DelayAction(0., function()
+                                            BlzPauseUnitEx(harvester, true)
+                                            SetUnitFacing(harvester, 270.)
+                                            local player = GetOwningPlayer(unit)
+                                            DestroyTimer(unit_data.unload_timer)
+                                            unit_data.unload_timer = CreateTimer()
+                                            TimerStart(unit_data.unload_timer, 1., true, function ()
+
+                                                    if harvester_data.spice_value > 0. and GetWidgetLife(harvester)  > 0.045 and GetWidgetLife(unit) > 0.045 then
+                                                        harvester_data.spice_value = harvester_data.spice_value - 100.
+                                                        UpdateSpiceText(harvester)
+                                                        SetPlayerState(player, PLAYER_STATE_RESOURCE_GOLD, GetPlayerState(player, PLAYER_STATE_RESOURCE_GOLD) + 100.)
+                                                        PlayLocalSound("Sound\\CASHTIK1.wav", GetPlayerId(player), 110)
+                                                    else
+                                                        DestroyTimer(unit_data.unload_timer)
+
+                                                        if GetWidgetLife(harvester) > 0.045 then
+                                                            BlzPauseUnitEx(harvester, false)
+                                                                if GetWidgetLife(harvester_data.last_spice) > 0. then
+                                                                    IssuePointOrderById(harvester_data.owner, order_harvest, GetWidgetX(harvester_data.last_spice), GetWidgetY(harvester_data.last_spice))
+                                                                else
+                                                                    local spice = GetNearestSpice(harvester_data.owner)
+                                                                    if spice then IssuePointOrderById(harvester_data.owner, order_harvest, GetWidgetX(harvester_data.spice), GetWidgetY(harvester_data.spice)) end
+                                                                end
+                                                        end
+
+                                                    end
+
+                                            end)
+                                        end)
+                                    end
+
+                                end)
+
+                            end
+
+                    end
+
             end)
+
+            unit_data.unload_leave_trigger = CreateTrigger()
+            TriggerRegisterLeaveRegionSimple(unit_data.unload_leave_trigger, unit_data.proximity_region)
+            TriggerAddAction(unit_data.unload_leave_trigger, function()
+                if GetLeavingUnit() == harvester then
+                    if unit_data.unload_timer then DestroyTimer(unit_data.unload_timer) end
+                    harvester = nil
+                    --print("harvester left")
+                end
+            end)
+
+
     end
 
 
     function HarvestInit()
 
         MyRefineryFilter = Filter(function()
-            return GetUnitTypeId(GetFilterUnit()) == FourCC("h000") and GetWidgetLife(GetFilterUnit()) > 0.045
+            return GetUnitTypeId(GetFilterUnit()) == REFINERY_ID and GetWidgetLife(GetFilterUnit()) > 0.045
         end)
 
 
 
         local Trigger = CreateTrigger()
-        TriggerRegisterAnyUnitEventBJ(Trigger, EVENT_PLAYER_UNIT_SPELL_FINISH)
+        TriggerRegisterAnyUnitEventBJ(Trigger, EVENT_PLAYER_UNIT_SPELL_EFFECT)
         TriggerAddAction(Trigger, function()
 
+
+        end)
+
+        Trigger = CreateTrigger()
+        TriggerRegisterAnyUnitEventBJ(Trigger, EVENT_PLAYER_UNIT_SPELL_FINISH)
+        TriggerAddAction(Trigger, function()
             local spell = GetSpellAbilityId()
             
-            if spell == FourCC("A01J") then
-                local unit_data = GetUnitData(GetTriggerUnit())
-                local spice = unit_data.last_spice
-                local new_life = GetWidgetLife(spice) - 100.
+                if spell == HARVEST_ABILITY then
+                    local unit_data = GetUnitData(GetTriggerUnit())
+                    local spice = unit_data.last_spice
+                    local new_life = GetWidgetLife(spice) - 100.
 
-                    SetDestructableLife(spice, new_life)
-                    unit_data.spice_value = unit_data.spice_value + 100.
-                    UpdateSpiceText(unit_data.owner)
-                    print("harvested")
+                        SetDestructableLife(spice, new_life)
+                        unit_data.spice_value = unit_data.spice_value + 100.
+                        UpdateSpiceText(unit_data.owner)
+                        --print("harvested")
 
+                            if unit_data.spice_value >= 700. then
+                                unit_data.spice_value = 700.
+                                local refinery = GetNearestRefinery(unit_data.owner)
 
-                        if unit_data.spice_value >= 700. then
-                            unit_data.spice_value = 700.
-                            local refinery = GetNearestRefinery(unit_data.owner)
+                                    if refinery then IssueTargetOrderById(unit_data.owner, order_returnresources, refinery) end
+                                    --print("full")
 
-                                if refinery then
-                                    IssueTargetOrderById(unit_data.owner, order_returnresources, refinery)
-                                end
+                            elseif not (new_life > 0.) then
+                                spice = GetNearestSpice(unit_data.owner)
 
-                            print("full")
-                        elseif not (new_life > 0.) then
-                            spice = GetNearestSpice(unit_data.owner)
+                                    if spice then
+                                        TimerStart(CreateTimer(), 0., false, function()
+                                            IssueTargetOrderById(unit_data.owner, order_hex, spice)
+                                            DestroyTimer(GetExpiredTimer())
+                                        end)
+                                    end
 
-                                if spice then
-                                    TimerStart(CreateTimer(), 0., false, function()
-                                        IssueTargetOrderById(unit_data.owner, order_hex, spice)
-                                        DestroyTimer(GetExpiredTimer())
-                                    end)
-                                end
+                                unit_data.last_spice = spice
+                                --print("new spice seek")
+                            else
+                                TimerStart(CreateTimer(), 0., false, function()
+                                    IssueTargetOrderById(unit_data.owner, order_hex, spice)
+                                    DestroyTimer(GetExpiredTimer())
+                                end)
+                                --(unit_data.owner, order_hex, spice)
+                                --print("reorder")
+                            end
 
+                elseif spell == HARVEST_ABILITY_POINTER then
+                    local unit_data = GetUnitData(GetTriggerUnit())
+                    local spice = GetNearestSpice(unit_data.owner)
+
+                        if spice then
+                            IssueTargetOrderById(unit_data.owner, order_hex, spice)
                             unit_data.last_spice = spice
-                            print("new spice seek")
-                        else
-                            TimerStart(CreateTimer(), 0., false, function()
-                                IssueTargetOrderById(unit_data.owner, order_hex, spice)
-                                DestroyTimer(GetExpiredTimer())
-                            end)
-                            --(unit_data.owner, order_hex, spice)
-                            print("reorder")
                         end
 
-            elseif spell == FourCC("A01I") then
-                local unit_data = GetUnitData(GetTriggerUnit())
-                local spice = GetNearestSpice(unit_data.owner)
+                elseif spell == RETURN_ABILITY_VISUAL then
+                    local unit_data = GetUnitData(GetTriggerUnit())
+                    local refinery = GetNearestRefinery(unit_data.owner)
 
-                    if spice then
-                        IssueTargetOrderById(unit_data.owner, order_hex, spice)
-                        unit_data.last_spice = spice
-                    end
+                        if refinery and unit_data.spice_value > 0. then IssueTargetOrderById(unit_data.owner, order_returnresources, refinery) end
+                --[[
+                elseif spell == RETURN_ABILITY then
+                    local unit_data = GetUnitData(GetTriggerUnit())
 
-                    if spice then print("get target spice") end
+                        unit_data.spice_value = 0.
+                        UpdateSpiceText(unit_data.owner)
 
-            elseif spell == FourCC("A01L") then
-                local unit_data = GetUnitData(GetTriggerUnit())
-                local refinery = GetNearestRefinery(unit_data.owner)
-    
-                    if refinery then
-                        IssueTargetOrderById(unit_data.owner, order_returnresources, refinery)
-                    end
+                        TimerStart(CreateTimer(), 0., false, function()
+                            if GetWidgetLife(unit_data.last_spice) > 0. then
+                                IssuePointOrderById(unit_data.owner, order_harvest, GetWidgetX(unit_data.last_spice), GetWidgetY(unit_data.last_spice))
+                            else
+                                local spice = GetNearestSpice(unit_data.owner)
+                                if spice then IssuePointOrderById(unit_data.owner, order_harvest, GetWidgetX(unit_data.spice), GetWidgetY(unit_data.spice)) end
+                            end
+                            DestroyTimer(GetExpiredTimer())
+                        end)
 
-            elseif spell == FourCC("A01K") then
-                local unit_data = GetUnitData(GetTriggerUnit())
-
-                    unit_data.spice_value = 0.
-                    UpdateSpiceText(unit_data.owner)
-
-                    TimerStart(CreateTimer(), 0., false, function()
-                        if GetWidgetLife(unit_data.last_spice) > 0. then
-                            IssuePointOrderById(unit_data.owner, order_harvest, GetWidgetX(unit_data.last_spice), GetWidgetY(unit_data.last_spice))
-                        else
-                            local spice = GetNearestSpice(unit_data.owner)
-                                if spice then
-                                    IssuePointOrderById(unit_data.owner, order_harvest, GetWidgetX(unit_data.spice), GetWidgetY(unit_data.spice))
-                                end
-                        end
-                        DestroyTimer(GetExpiredTimer())
-                    end)
-
-
-            end
+                ]]
+                end
 
         end)
 

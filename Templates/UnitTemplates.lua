@@ -19,9 +19,9 @@ do
             owner  = source,
             action_timer = CreateTimer(),
             attack_timer = CreateTimer(),
-            weapon = MergeTables({}, reference_data),
+            weapon = reference_data.weapon and MergeTables({}, reference_data.weapon) or nil,
             basic_movement_speed = GetUnitDefaultMoveSpeed(source),
-            turnrate = reference_data.turn_rate / (1. / 0.025)
+            turnrate = (reference_data.turn_rate or 0.) / (1. / 0.025)
         }
 
         data.current_movement_speed = data.basic_movement_speed
@@ -118,24 +118,27 @@ do
             turn_rate = 50.,
         })
         --=============================================--
+        NewUnitTemplate('h000', {
+            some_var = "123"
+        })
+        --=============================================--
 
-        local group = CreateGroup()
-        GroupEnumUnitsInRect(group, bj_mapInitialPlayableArea, nil)
-        ForGroup(group, function ()
-            local handle = GetUnitTypeId(GetEnumUnit())
 
-            if UnitsData[handle] ~= nil then
-                NewUnitByTemplate(GetEnumUnit(), UnitsData[handle])
 
-                if GetUnitTypeId(GetEnumUnit()) == FourCC("e001") then
-                    CreateSpiceTexttag(GetEnumUnit())
+            local group = CreateGroup()
+            GroupEnumUnitsInRect(group, bj_mapInitialPlayableArea, nil)
+            ForGroup(group, function ()
+                local handle = GetUnitTypeId(GetEnumUnit())
+
+                if UnitsData[handle] ~= nil then
+                    NewUnitByTemplate(GetEnumUnit(), UnitsData[handle])
+                    OnUnitCreated(GetEnumUnit())
                 end
-                --OnUnitCreated(GetEnumUnit())
-            end
 
-        end)
+            end)
 
-        DestroyGroup(group)
+            DestroyGroup(group)
+
 
         local trg = CreateTrigger()
         TriggerRegisterEnterRectSimple(trg, bj_mapInitialPlayableArea)
@@ -145,11 +148,7 @@ do
 
                 if UnitsList[GetHandleId(unit)] == nil and UnitsData[GetUnitTypeId(unit)] ~= nil then
                     NewUnitByTemplate(unit, UnitsData[GetUnitTypeId(unit)])
-
-                    if GetUnitTypeId(unit) == FourCC("e001") then
-                        CreateSpiceTexttag(unit)
-                    end
-                    --OnUnitCreated(unit)
+                    OnUnitCreated(unit)
                 end
 
         end)
@@ -171,8 +170,8 @@ do
                         DestroyTimer(unit_data.action_timer)
                         DestroyTimer(unit_data.attack_timer)
 
-                        if unit_data.spice_text_timer then
-                            DestroyTimer(unit_data.spice_text_timer)
+                        if unit_data.spice_text then
+                            if unit_data.spice_text_timer then DestroyTimer(unit_data.spice_text_timer) end
                             DestroyTextTag(unit_data.spice_text)
                         end
 

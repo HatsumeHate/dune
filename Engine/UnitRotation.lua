@@ -45,25 +45,25 @@ do
                     local source = GetTriggerUnit()
                     local data = GetUnitData(source)
 
-                    print("issued!")
+                    --print("issued!")
                     if GetOrderTargetUnit() then
                         data.heading_x = GetUnitX(GetOrderTargetUnit())
                         data.heading_y = GetUnitY(GetOrderTargetUnit())
                         data.heading_target = GetOrderTargetUnit()
                         data.heading_widget = nil
-                        print("target!")
+                        --print("target!")
                     elseif GetOrderTargetDestructable() then
                         data.heading_x = GetWidgetX(GetOrderTargetDestructable())
                         data.heading_y = GetWidgetY(GetOrderTargetDestructable())
                         data.heading_widget = GetOrderTargetDestructable()
                         data.heading_target = nil
-                        print("widget!")
+                        --print("widget!")
                     else
                         data.heading_x = GetOrderPointX()
                         data.heading_y = GetOrderPointY()
                         data.heading_target = nil
                         data.heading_widget = nil
-                        print("point!")
+                        --print("point!")
                     end
 
 
@@ -125,15 +125,15 @@ do
                                     elseif data.heading_target and ((GetWidgetLife(data.heading_target) > 0.045 and IsAngleInFace(source, data.move_angle, GetUnitX(data.heading_target), GetUnitY(data.heading_target))) or GetWidgetLife(data.heading_target) <= 0.045) then
                                         ReapplyOrder(data)
                                         StopRotation(data)
-                                        print("done")
+                                        --print("done")
                                     else
                                         ReapplyOrder(data)
                                         StopRotation(data)
-                                        print("done")
+                                        --print("done")
                                     end
                                 else
                                     StopRotation(data)
-                                    print("dead")
+                                    --print("dead")
                                 end
                             end)
 

@@ -15,7 +15,9 @@ do
         ShakerInit()
         UnitDataInit()
         UnitRotationInit()
+        HarvestInit()
         print("ok")
+
     end
 
 
